@@ -1,0 +1,35 @@
+name: "Generate Dockerfiles"
+
+on:
+  workflow_dispatch: # Allows manual triggering from the Actions tab
+  schedule:
+    - cron: '0 12 * * 1-5'  # 8:00 AM EDT, M-F
+
+jobs:
+  generate_dockerfiles:
+    name: Generate Dockerfiles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Update `versions.json` with latest Ruby versions
+        run: ./versions.sh
+
+      - name: Regenerate Dockerfiles using `Dockerfile.template`
+        run: ./apply-templates.sh
+
+      - name: Commit and push changes
+        run: |
+          git add .
+          if ! git diff --quiet --staged; then
+            git commit -m "Updates auto-generated Dockerfiles"
+            git push origin master
+          else
+            echo "No changes detected."
+          fi
