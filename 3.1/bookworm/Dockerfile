@@ -5,6 +5,15 @@
 #
 
 FROM buildpack-deps:bookworm
+LABEL maintainer="Chris Hulton <chulton@ltvco.com>, Patrick Tulskie <patrick@ltvco.com>"
+
+RUN set -eux; \
+	apt-get update; \
+	apt-get install -y --no-install-recommends \
+		libjemalloc-dev \
+	; \
+	apt-mark hold libjemalloc-dev; \
+	rm -rf /var/lib/apt/lists/*
 
 # skip installing gem documentation
 RUN set -eux; \
@@ -59,6 +68,7 @@ RUN set -eux; \
 		--build="$gnuArch" \
 		--disable-install-doc \
 		--enable-shared \
+		--with-jemalloc \
 	; \
 	make -j "$(nproc)"; \
 	make install; \
@@ -83,7 +93,8 @@ RUN set -eux; \
 # rough smoke test
 	ruby --version; \
 	gem --version; \
-	bundle --version
+	bundle --version; \
+	ruby -r rbconfig -e "RbConfig::CONFIG['MAINLIBS'].include?('jemalloc') ? puts('Ruby is compiled with jemalloc') : warn('JEMALLOC IS MISSING FROM RUBY')"
 
 # don't create ".bundle" in all our apps
 ENV GEM_HOME /usr/local/bundle
