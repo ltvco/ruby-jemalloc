@@ -5,12 +5,14 @@
 #
 
 FROM alpine:3.20
+LABEL maintainer="Chris Hulton <chulton@ltvco.com>, Patrick Tulskie <patrick@ltvco.com>"
 
 RUN set -eux; \
 	apk add --no-cache \
 		bzip2 \
 		ca-certificates \
 		gmp-dev \
+		jemalloc-dev \
 		libffi-dev \
 		procps \
 		yaml-dev \
@@ -102,6 +104,7 @@ RUN set -eux; \
 		--build="$gnuArch" \
 		--disable-install-doc \
 		--enable-shared \
+		--with-jemalloc \
 	; \
 	make -j "$(nproc)"; \
 	make install; \
@@ -129,7 +132,8 @@ RUN set -eux; \
 # rough smoke test
 	ruby --version; \
 	gem --version; \
-	bundle --version
+	bundle --version; \
+	ruby -r rbconfig -e "RbConfig::CONFIG['MAINLIBS'].include?('jemalloc') ? puts('Ruby is compiled with jemalloc') : warn('JEMALLOC IS MISSING FROM RUBY')"
 
 # don't create ".bundle" in all our apps
 ENV GEM_HOME /usr/local/bundle
