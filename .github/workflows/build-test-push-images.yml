@@ -1,0 +1,142 @@
+name: "Build Test and Push Docker Images"
+
+on:
+  workflow_dispatch: # Allows manual triggering from the Actions tab
+  schedule:
+    - cron: '0 13 1,15 * *'  # 9:00 AM EDT on the 1st and 15th of each month
+
+jobs:
+  define_matrix:
+    name: Define matrix strategy
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.generate-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Generate matrix
+        id: generate-matrix
+        run: |
+          matrix=$(jq -c '
+            # Define supported variants
+            ["bookworm", "slim-bookworm", "alpine3.21"] as $supported_variants |
+            # Convert `versions.json` object to an array of key-value pairs
+            to_entries[] |
+            # Exclude preview Ruby versions (Ex: `3.x-rc`)
+            select(.key | test("^\\d+\\.\\d+$")) |
+            # Exclude undefined Ruby versions (Ex: `"3.x": null`)
+            select(.value != null) |
+            # Iterate over the variants of the remaining Ruby versions
+            .value.variants[] as $variant |
+            # Include the variant if supported
+            select($supported_variants | index($variant) != null) |
+            {
+              minor_version: .key,
+              patch_version: .value.version,
+              variant: $variant
+            }
+          ' versions.json | jq -s '.')
+          echo "matrix=$(echo $matrix | jq -c)" >> "$GITHUB_OUTPUT"
+
+  build_test_push:
+    name: "Ruby ${{ matrix.patch_version}} (${{ matrix.variant }}): Build, Test, Push"
+    needs: define_matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.define_matrix.outputs.matrix) }}
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Determine specific variant tags
+        run: |
+          # Ex: `ghcr.io/ltvco/ruby-jemalloc:3.3-bookworm`
+          echo "MINOR_VERSION_VARIANT_TAG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.minor_version }}-${{ matrix.variant }}" >> $GITHUB_ENV
+          # Ex: `ghcr.io/ltvco/ruby-jemalloc:3.3.6-bookworm`
+          echo "PATCH_VERSION_VARIANT_TAG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.patch_version }}-${{ matrix.variant }}" >> $GITHUB_ENV
+
+      # Ref: https://docs.docker.com/build/ci/github-actions/test-before-push/
+      - name: Build and export to local Docker cache
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.minor_version }}/${{ matrix.variant }}
+          load: true # Load the image into the local Docker cache for testing
+          tags: ${{ env.PATCH_VERSION_VARIANT_TAG }}
+
+      - name: Verify Ruby installation
+        run: |
+          expected_output="Hello World!"
+          actual_output=$(docker run --rm ${{ env.PATCH_VERSION_VARIANT_TAG }} ruby -e 'puts "Hello World!"')
+          echo "$actual_output"
+          if [ "$actual_output" != "$expected_output" ]; then
+            echo "Failure for Ruby ${{ matrix.patch_version }} on ${{ matrix.variant }}: expected \"$expected_output\", got \"$actual_output\""
+            exit 1
+          fi
+
+      - name: Verify Jemalloc in Ruby build configuration
+        run: |
+          expected_output="Jemalloc enabled"
+          actual_output=$(docker run --rm ${{ env.PATCH_VERSION_VARIANT_TAG }} ruby -e 'puts RbConfig::CONFIG["MAINLIBS"].include?("jemalloc") ? "Jemalloc enabled" : "Jemalloc missing"')
+          echo "$actual_output"
+          if [ "$actual_output" != "$expected_output" ]; then
+            echo "Failure for Ruby ${{ matrix.patch_version }} on ${{ matrix.variant }}: expected \"$expected_output\", got \"$actual_output\""
+            exit 1
+          fi
+
+      - name: Verify Jemalloc runtime statistics
+        run: |
+          expected_output_pattern="jemalloc statistics"
+          actual_output=$(docker run --rm -e MALLOC_CONF=stats_print:true ${{ env.PATCH_VERSION_VARIANT_TAG }} ruby -e 'exit' 2>&1)
+          echo "$actual_output"
+          if ! grep -q "$expected_output_pattern" <<< "$actual_output"; then
+            echo "Failure for Ruby ${{ matrix.patch_version }} on ${{ matrix.variant }}: expected output to contain \"$expected_output_pattern\""
+            exit 1
+          fi
+
+      - name: Determine base variant tags
+        run: |
+          if [[ "${{ matrix.variant }}" == alpine* ]]; then
+            # Ex: `ghcr.io/ltvco/ruby-jemalloc:3.3-alpine`
+            MINOR_VERSION_BASE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.minor_version }}-alpine"
+            # Ex: `ghcr.io/ltvco/ruby-jemalloc:3.3.6-alpine`
+            PATCH_VERSION_BASE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.patch_version }}-alpine"
+          elif [[ "${{ matrix.variant }}" == slim* ]]; then
+            # Ex: `ghcr.io/ltvco/ruby-jemalloc:3.3-slim`
+            MINOR_VERSION_BASE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.minor_version }}-slim"
+            # Ex: `ghcr.io/ltvco/ruby-jemalloc:3.3.6-slim`
+            PATCH_VERSION_BASE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.patch_version }}-slim"
+          else
+            # Ex: `ghcr.io/ltvco/ruby-jemalloc:3.3`
+            MINOR_VERSION_BASE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.minor_version }}"
+            # Ex: `ghcr.io/ltvco/ruby-jemalloc:3.3.6`
+            PATCH_VERSION_BASE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.patch_version }}"
+          fi
+
+          echo "MINOR_VERSION_BASE_TAG=$MINOR_VERSION_BASE_TAG" >> $GITHUB_ENV
+          echo "PATCH_VERSION_BASE_TAG=$PATCH_VERSION_BASE_TAG" >> $GITHUB_ENV
+
+      - name: Build multi-platform and push to container registry
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.minor_version }}/${{ matrix.variant }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.PATCH_VERSION_VARIANT_TAG }},${{ env.MINOR_VERSION_VARIANT_TAG }},${{ env.PATCH_VERSION_BASE_TAG }},${{ env.MINOR_VERSION_BASE_TAG }}
