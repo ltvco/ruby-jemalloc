@@ -12,55 +12,20 @@ FROM debian:{{ env.variant | ltrimstr("slim-") }}-slim
 {{ ) else ( -}}
 FROM buildpack-deps:{{ env.variant }}
 {{ ) end -}}
-LABEL maintainer="Chris Hulton <chulton@ltvco.com>, Patrick Tulskie <patrick@ltvco.com>"
 
-{{ if is_alpine then ( -}}
-RUN set -eux; \
-	apk add --no-cache \
-		bzip2 \
-		ca-certificates \
-		gmp-dev \
-		jemalloc-dev \
-		libffi-dev \
-		procps \
-		yaml-dev \
-		zlib-dev \
-	;
-
-{{ ) elif is_slim then ( -}}
+{{ if is_slim then ( -}}
 RUN set -eux; \
 	apt-get update; \
 	apt-get install -y --no-install-recommends \
-		bzip2 \
 		ca-certificates \
-		libffi-dev \
-		libgmp-dev \
-		libjemalloc-dev \
-		libssl-dev \
-		libyaml-dev \
-		procps \
-		zlib1g-dev \
 	; \
-	apt-mark hold libjemalloc-dev; \
 	rm -rf /var/lib/apt/lists/*
 
-{{ ) else ( -}}
-RUN set -eux; \
-	apt-get update; \
-	apt-get install -y --no-install-recommends \
-		libjemalloc-dev \
-	; \
-	apt-mark hold libjemalloc-dev; \
-	rm -rf /var/lib/apt/lists/*
-
-{{ ) end -}}
-# skip installing gem documentation
+{{ ) else "" end -}}
+# skip installing gem documentation with `gem install`/`gem update`
 RUN set -eux; \
 	mkdir -p /usr/local/etc; \
-	{ \
-		echo 'install: --no-document'; \
-		echo 'update: --no-document'; \
-	} >> /usr/local/etc/gemrc
+	echo 'gem: --no-document' >> /usr/local/etc/gemrc
 
 ENV LANG C.UTF-8
 
@@ -89,6 +54,8 @@ RUN set -eux; \
 		gcc \
 		gdbm-dev \
 		glib-dev \
+		gmp-dev \
+		jemalloc-dev \
 		libc-dev \
 		libffi-dev \
 		libxml2-dev \
@@ -100,6 +67,8 @@ RUN set -eux; \
 		openssl-dev \
 		patch \
 		procps \
+		yaml-dev \
+		zlib-dev \
 {{ if env.version | rtrimstr("-rc") | IN("3.1", "3.2") then ( -}}
 		readline-dev \
 {{ ) else "" end -}}
@@ -119,25 +88,33 @@ RUN set -eux; \
 {{ ) else "" end -}}
 		dpkg-dev \
 		libgdbm-dev \
+		libjemalloc-dev \
 		ruby \
 {{ if is_slim then ( -}}
 		autoconf \
+		bzip2 \
 		g++ \
 		gcc \
 		libbz2-dev \
+		libffi-dev \
 		libgdbm-compat-dev \
 		libglib2.0-dev \
+		libgmp-dev \
 		libncurses-dev \
 {{ if env.version | rtrimstr("-rc") | IN("3.1", "3.2") then ( -}}
 		libreadline-dev \
 {{ ) else "" end -}}
+		libssl-dev \
 		libxml2-dev \
 		libxslt-dev \
+		libyaml-dev \
 		make \
 		wget \
 		xz-utils \
+		zlib1g-dev \
 {{ ) else "" end -}}
 	; \
+	apt-mark hold libjemalloc-dev; \
 	rm -rf /var/lib/apt/lists/*; \
 {{ ) end -}}
 {{ if .rust.version then ( -}}
@@ -227,9 +204,6 @@ RUN set -eux; \
 	echo '3ab628a51d92fdf0d2b5835e93564857aea73e0c1de00313864a94a6255cb645 *thread-stack-fix.patch' | sha256sum --check --strict; \
 	patch -p1 -i thread-stack-fix.patch; \
 	rm thread-stack-fix.patch; \
-	\
-# the configure script does not detect isnan/isinf as macros
-	export ac_cv_func_isnan=yes ac_cv_func_isinf=yes; \
 	\
 {{ ) else "" end -}}
 # hack in "ENABLE_PATH_CHECK" disabling to suppress:

@@ -4,28 +4,12 @@
 # PLEASE DO NOT EDIT IT DIRECTLY.
 #
 
-FROM alpine:3.19
-LABEL maintainer="Chris Hulton <chulton@ltvco.com>, Patrick Tulskie <patrick@ltvco.com>"
+FROM alpine:3.21
 
-RUN set -eux; \
-	apk add --no-cache \
-		bzip2 \
-		ca-certificates \
-		gmp-dev \
-		jemalloc-dev \
-		libffi-dev \
-		procps \
-		yaml-dev \
-		zlib-dev \
-	;
-
-# skip installing gem documentation
+# skip installing gem documentation with `gem install`/`gem update`
 RUN set -eux; \
 	mkdir -p /usr/local/etc; \
-	{ \
-		echo 'install: --no-document'; \
-		echo 'update: --no-document'; \
-	} >> /usr/local/etc/gemrc
+	echo 'gem: --no-document' >> /usr/local/etc/gemrc
 
 ENV LANG C.UTF-8
 
@@ -50,6 +34,8 @@ RUN set -eux; \
 		gcc \
 		gdbm-dev \
 		glib-dev \
+		gmp-dev \
+		jemalloc-dev \
 		libc-dev \
 		libffi-dev \
 		libxml2-dev \
@@ -61,6 +47,8 @@ RUN set -eux; \
 		openssl-dev \
 		patch \
 		procps \
+		yaml-dev \
+		zlib-dev \
 		readline-dev \
 		ruby \
 		tar \
@@ -85,9 +73,6 @@ RUN set -eux; \
 	echo '3ab628a51d92fdf0d2b5835e93564857aea73e0c1de00313864a94a6255cb645 *thread-stack-fix.patch' | sha256sum --check --strict; \
 	patch -p1 -i thread-stack-fix.patch; \
 	rm thread-stack-fix.patch; \
-	\
-# the configure script does not detect isnan/isinf as macros
-	export ac_cv_func_isnan=yes ac_cv_func_isinf=yes; \
 	\
 # hack in "ENABLE_PATH_CHECK" disabling to suppress:
 #   warning: Insecure world writable dir
