@@ -5,6 +5,7 @@
 #
 
 FROM alpine:3.20
+LABEL maintainer="Chris Hulton <chulton@ltvco.com>, Patrick Tulskie <patrick@ltvco.com>"
 
 # skip installing gem documentation with `gem install`/`gem update`
 RUN set -eux; \

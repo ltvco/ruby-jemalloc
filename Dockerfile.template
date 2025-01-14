@@ -12,6 +12,7 @@ FROM debian:{{ env.variant | ltrimstr("slim-") }}-slim
 {{ ) else ( -}}
 FROM buildpack-deps:{{ env.variant }}
 {{ ) end -}}
+LABEL maintainer="Chris Hulton <chulton@ltvco.com>, Patrick Tulskie <patrick@ltvco.com>"
 
 {{ if is_slim then ( -}}
 RUN set -eux; \

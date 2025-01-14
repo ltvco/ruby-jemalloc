@@ -5,6 +5,7 @@
 #
 
 FROM debian:bullseye-slim
+LABEL maintainer="Chris Hulton <chulton@ltvco.com>, Patrick Tulskie <patrick@ltvco.com>"
 
 RUN set -eux; \
 	apt-get update; \
