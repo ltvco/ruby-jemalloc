@@ -47,6 +47,7 @@ jobs:
       contents: read
       packages: write
     strategy:
+      fail-fast: false # Do not cancel every build if one fails
       matrix:
         include: ${{ fromJson(needs.define_matrix.outputs.matrix) }}
     env:
