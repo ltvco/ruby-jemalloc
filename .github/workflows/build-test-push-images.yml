@@ -42,7 +42,7 @@ jobs:
   build_test_push:
     name: "Ruby ${{ matrix.patch_version}} (${{ matrix.variant }}): Build, Test, Push"
     needs: define_matrix
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04 # Avoids core dump issue introduced in ubuntu-24.04 (20250126.1.0)
     permissions:
       contents: read
       packages: write
