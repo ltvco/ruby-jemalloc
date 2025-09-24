@@ -18,6 +18,7 @@ FROM debian:{{ env.variant | ltrimstr("slim-") }}-slim
 {{ ) else ( -}}
 FROM buildpack-deps:{{ env.variant }}
 {{ ) end -}}
+LABEL maintainer="Chris Hulton <chulton@ltvco.com>, Patrick Tulskie <patrick@ltvco.com>"
 
 {{ if is_slim then ( -}}
 RUN set -eux; \
@@ -45,6 +46,7 @@ ENV RUBY_DOWNLOAD_SHA256 {{ .sha256.xz }}
 RUN set -eux; \
 	\
 {{ if is_alpine then ( -}}
+	apk add --no-cache jemalloc-dev; \
 	apk add --no-cache --virtual .ruby-builddeps \
 		autoconf \
 {{ if env.version | rtrimstr("-rc") | IN("3.2") then ( -}}
@@ -93,6 +95,7 @@ RUN set -eux; \
 {{ ) else "" end -}}
 		dpkg-dev \
 		libgdbm-dev \
+		libjemalloc-dev \
 		ruby \
 {{ if is_slim then ( -}}
 		autoconf \
@@ -118,6 +121,7 @@ RUN set -eux; \
 		zlib1g-dev \
 {{ ) else "" end -}}
 	; \
+	apt-mark hold libjemalloc-dev; \
 {{ ) end -}}
 	\
 	rustArch=; \
@@ -212,6 +216,7 @@ RUN set -eux; \
 		--build="$gnuArch" \
 		--disable-install-doc \
 		--enable-shared \
+		--with-jemalloc \
 		${rustArch:+--enable-yjit} \
 	; \
 	make -j "$(nproc)"; \
@@ -261,7 +266,8 @@ RUN set -eux; \
 # rough smoke test
 	ruby --version; \
 	gem --version; \
-	bundle --version
+	bundle --version; \
+	ruby -r rbconfig -e "RbConfig::CONFIG['MAINLIBS'].include?('jemalloc') ? puts('Ruby is compiled with jemalloc') : warn('JEMALLOC IS MISSING FROM RUBY')"
 
 # don't create ".bundle" in all our apps
 ENV GEM_HOME /usr/local/bundle
